@@ -3,11 +3,23 @@
 set -eu
 set -o pipefail
 
+# System specific settings
+# Notes:
+# - up to macOS Big Sur we used the same GID/UIDs as Linux (30000:30001-32)
+# - we changed UID to 301 because Big Sur updates failed into recovery mode
+#   we're targeting the 200-400 UID range for role users mentioned in the
+#   usage note for sysadminctl
+# - we changed UID to 351 because Sequoia now uses UIDs 300-304 for its own
+#   daemon users
+# - we changed GID to 350 alongside above just because it hides the nixbld
+#   group from the Users & Groups settings panel :)
+export NIX_FIRST_BUILD_UID="${NIX_FIRST_BUILD_UID:-351}"
+export NIX_BUILD_GROUP_ID="${NIX_BUILD_GROUP_ID:-350}"
+export NIX_BUILD_USER_NAME_TEMPLATE="_nixbld%d"
+
 readonly NIX_DAEMON_DEST=/Library/LaunchDaemons/org.nixos.nix-daemon.plist
 # create by default; set 0 to DIY, use a symlink, etc.
 readonly NIX_VOLUME_CREATE=${NIX_VOLUME_CREATE:-1} # now default
-NIX_FIRST_BUILD_UID="301"
-NIX_BUILD_USER_NAME_TEMPLATE="_nixbld%d"
 
 # caution: may update times on / if not run as normal non-root user
 read_only_root() {
@@ -100,7 +112,7 @@ poly_extra_try_me_commands() {
 poly_configure_nix_daemon_service() {
     task "Setting up the nix-daemon LaunchDaemon"
     _sudo "to set up the nix-daemon as a LaunchDaemon" \
-          /bin/cp -f "/nix/var/nix/profiles/default$NIX_DAEMON_DEST" "$NIX_DAEMON_DEST"
+          /usr/bin/install -m "u=rw,go=r" "/nix/var/nix/profiles/default$NIX_DAEMON_DEST" "$NIX_DAEMON_DEST"
 
     _sudo "to load the LaunchDaemon plist for nix-daemon" \
           launchctl load /Library/LaunchDaemons/org.nixos.nix-daemon.plist
@@ -133,13 +145,28 @@ poly_user_id_get() {
     dsclattr "/Users/$1" "UniqueID"
 }
 
+dscl_create() {
+    # workaround a bug in dscl where it sometimes fails with eNotYetImplemented:
+    # https://github.com/NixOS/nix/issues/12140
+    while ! _sudo "$1" /usr/bin/dscl . -create "$2" "$3" "$4" 2> "$SCRATCH/dscl.err"; do
+        local err=$?
+        if [[ $err -eq 140 ]] && grep -q "-14988 (eNotYetImplemented)" "$SCRATCH/dscl.err"; then
+            echo "dscl failed with eNotYetImplemented, retrying..."
+            sleep 1
+            continue
+        fi
+        cat "$SCRATCH/dscl.err"
+        return $err
+    done
+}
+
 poly_user_hidden_get() {
     dsclattr "/Users/$1" "IsHidden"
 }
 
 poly_user_hidden_set() {
-    _sudo "in order to make $1 a hidden user" \
-          /usr/bin/dscl . -create "/Users/$1" "IsHidden" "1"
+    dscl_create "in order to make $1 a hidden user" \
+          "/Users/$1" "IsHidden" "1"
 }
 
 poly_user_home_get() {
@@ -149,8 +176,8 @@ poly_user_home_get() {
 poly_user_home_set() {
     # This can trigger a permission prompt now:
     # "Terminal" would like to administer your computer. Administration can include modifying passwords, networking, and system settings.
-    _sudo "in order to give $1 a safe home directory" \
-          /usr/bin/dscl . -create "/Users/$1" "NFSHomeDirectory" "$2"
+    dscl_create "in order to give $1 a safe home directory" \
+          "/Users/$1" "NFSHomeDirectory" "$2"
 }
 
 poly_user_note_get() {
@@ -158,8 +185,8 @@ poly_user_note_get() {
 }
 
 poly_user_note_set() {
-    _sudo "in order to give $username a useful note" \
-          /usr/bin/dscl . -create "/Users/$1" "RealName" "$2"
+    dscl_create "in order to give $1 a useful note" \
+          "/Users/$1" "RealName" "$2"
 }
 
 poly_user_shell_get() {
@@ -167,8 +194,8 @@ poly_user_shell_get() {
 }
 
 poly_user_shell_set() {
-    _sudo "in order to give $1 a safe home directory" \
-          /usr/bin/dscl . -create "/Users/$1" "UserShell" "$2"
+    dscl_create "in order to give $1 a safe shell" \
+          "/Users/$1" "UserShell" "$2"
 }
 
 poly_user_in_group_check() {

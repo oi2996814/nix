@@ -1,12 +1,13 @@
 #include "globals.hh"
+#include "print-ambiguous.hh"
 #include "shared.hh"
 #include "eval.hh"
 #include "eval-inline.hh"
 #include "get-drvs.hh"
 #include "attr-path.hh"
+#include "signals.hh"
 #include "value-to-xml.hh"
 #include "value-to-json.hh"
-#include "util.hh"
 #include "store-api.hh"
 #include "local-fs-store.hh"
 #include "common-eval-args.hh"
@@ -23,8 +24,7 @@ static Path gcRoot;
 static int rootNr = 0;
 
 
-enum OutputKind { okPlain, okXML, okJSON };
-
+enum OutputKind { okPlain, okRaw, okXML, okJSON };
 
 void processExpr(EvalState & state, const Strings & attrPaths,
     bool parseOnly, bool strict, Bindings & autoArgs,
@@ -41,26 +41,32 @@ void processExpr(EvalState & state, const Strings & attrPaths,
 
     for (auto & i : attrPaths) {
         Value & v(*findAlongAttrPath(state, i, autoArgs, vRoot).first);
-        state.forceValue(v, [&]() { return v.determinePos(noPos); });
+        state.forceValue(v, v.determinePos(noPos));
 
-        PathSet context;
+        NixStringContext context;
         if (evalOnly) {
             Value vRes;
             if (autoArgs.empty())
                 vRes = v;
             else
                 state.autoCallFunction(autoArgs, v, vRes);
-            if (output == okXML)
+            if (output == okRaw)
+                std::cout << *state.coerceToString(noPos, vRes, context, "while generating the nix-instantiate output");
+                // We intentionally don't output a newline here. The default PS1 for Bash in NixOS starts with a newline
+                // and other interactive shells like Zsh are smart enough to print a missing newline before the prompt.
+            else if (output == okXML)
                 printValueAsXML(state, strict, location, vRes, std::cout, context, noPos);
-            else if (output == okJSON)
+            else if (output == okJSON) {
                 printValueAsJSON(state, strict, vRes, v.determinePos(noPos), std::cout, context);
-            else {
+                std::cout << std::endl;
+            } else {
                 if (strict) state.forceValueDeep(vRes);
-                vRes.print(state.symbols, std::cout);
+                std::set<const void *> seen;
+                printAmbiguous(vRes, state.symbols, std::cout, &seen, std::numeric_limits<int>::max());
                 std::cout << std::endl;
             }
         } else {
-            DrvInfos drvs;
+            PackageInfos drvs;
             getDerivations(state, v, "", autoArgs, drvs, false);
             for (auto & i : drvs) {
                 auto drvPath = i.requireDrvPath();
@@ -101,7 +107,6 @@ static int main_nix_instantiate(int argc, char * * argv)
         bool strict = false;
         Strings attrPaths;
         bool wantsReadWrite = false;
-        RepairFlag repair = NoRepair;
 
         struct MyArgs : LegacyArgs, MixEvalArgs
         {
@@ -131,6 +136,8 @@ static int main_nix_instantiate(int argc, char * * argv)
                 gcRoot = getArg(*arg, arg, end);
             else if (*arg == "--indirect")
                 ;
+            else if (*arg == "--raw")
+                outputKind = okRaw;
             else if (*arg == "--xml")
                 outputKind = okXML;
             else if (*arg == "--json")
@@ -139,8 +146,6 @@ static int main_nix_instantiate(int argc, char * * argv)
                 xmlOutputSourceLocation = false;
             else if (*arg == "--strict")
                 strict = true;
-            else if (*arg == "--repair")
-                repair = Repair;
             else if (*arg == "--dry-run")
                 settings.readOnlyMode = true;
             else if (*arg != "" && arg->at(0) == '-')
@@ -158,8 +163,8 @@ static int main_nix_instantiate(int argc, char * * argv)
         auto store = openStore();
         auto evalStore = myArgs.evalStoreUrl ? openStore(*myArgs.evalStoreUrl) : store;
 
-        auto state = std::make_unique<EvalState>(myArgs.searchPath, evalStore, store);
-        state->repair = repair;
+        auto state = std::make_unique<EvalState>(myArgs.lookupPath, evalStore, fetchSettings, evalSettings, store);
+        state->repair = myArgs.repair;
 
         Bindings & autoArgs = *myArgs.getAutoArgs(*state);
 
@@ -167,9 +172,11 @@ static int main_nix_instantiate(int argc, char * * argv)
 
         if (findFile) {
             for (auto & i : files) {
-                Path p = state->findFile(i);
-                if (p == "") throw Error("unable to find '%1%'", i);
-                std::cout << p << std::endl;
+                auto p = state->findFile(i);
+                if (auto fn = p.getPhysicalPath())
+                    std::cout << fn->string() << std::endl;
+                else
+                    throw Error("'%s' has no physical path", p);
             }
             return 0;
         }
@@ -183,13 +190,13 @@ static int main_nix_instantiate(int argc, char * * argv)
 
         for (auto & i : files) {
             Expr * e = fromArgs
-                ? state->parseExprFromString(i, absPath("."))
-                : state->parseExprFromFile(resolveExprPath(state->checkSourcePath(lookupFileArg(*state, i))));
+                ? state->parseExprFromString(i, state->rootPath("."))
+                : state->parseExprFromFile(resolveExprPath(lookupFileArg(*state, i)));
             processExpr(*state, attrPaths, parseOnly, strict, autoArgs,
                 evalOnly, outputKind, xmlOutputSourceLocation, e);
         }
 
-        state->printStats();
+        state->maybePrintStats();
 
         return 0;
     }

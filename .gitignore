@@ -1,114 +1,22 @@
-Makefile.config
-perl/Makefile.config
+# Default meson build dir
+/build
 
-# /
-/aclocal.m4
-/autom4te.cache
-/precompiled-headers.h.gch
-/config.*
-/configure
-/stamp-h1
-/svn-revision
-/libtool
+# /tests/functional/
+/tests/functional/common/subst-vars.sh
+/tests/functional/restricted-innocent
+/tests/functional/debugger-test-out
+/tests/functional/test-libstoreconsumer/test-libstoreconsumer
+/tests/functional/nix-shell
 
-# /doc/manual/
-/doc/manual/*.1
-/doc/manual/*.5
-/doc/manual/*.8
-/doc/manual/generated/*
-/doc/manual/nix.json
-/doc/manual/conf-file.json
-/doc/manual/builtins.json
-/doc/manual/src/SUMMARY.md
-/doc/manual/src/command-ref/new-cli
-/doc/manual/src/command-ref/conf-file.md
-/doc/manual/src/expressions/builtins.md
-
-# /scripts/
-/scripts/nix-profile.sh
-/scripts/nix-profile-daemon.sh
-
-# /src/libexpr/
-/src/libexpr/lexer-tab.cc
-/src/libexpr/lexer-tab.hh
-/src/libexpr/parser-tab.cc
-/src/libexpr/parser-tab.hh
-/src/libexpr/parser-tab.output
-/src/libexpr/nix.tbl
-/src/libexpr/tests/libexpr-tests
-
-# /src/libstore/
-*.gen.*
-/src/libstore/tests/libstore-tests
-
-# /src/libutil/
-/src/libutil/tests/libutil-tests
-
-/src/nix/nix
-
-# /src/nix-env/
-/src/nix-env/nix-env
-
-# /src/nix-instantiate/
-/src/nix-instantiate/nix-instantiate
-
-# /src/nix-store/
-/src/nix-store/nix-store
-
-/src/nix-prefetch-url/nix-prefetch-url
-
-/src/nix-collect-garbage/nix-collect-garbage
-
-# /src/nix-channel/
-/src/nix-channel/nix-channel
-
-# /src/nix-build/
-/src/nix-build/nix-build
-
-/src/nix-copy-closure/nix-copy-closure
-
-/src/error-demo/error-demo
-
-/src/build-remote/build-remote
-
-# /tests/
-/tests/test-tmp
-/tests/common.sh
-/tests/result*
-/tests/restricted-innocent
-/tests/shell
-/tests/shell.drv
-/tests/config.nix
-/tests/ca/config.nix
-/tests/repl-result-out
-
-# /tests/lang/
-/tests/lang/*.out
-/tests/lang/*.out.xml
-/tests/lang/*.ast
-
-/perl/lib/Nix/Config.pm
-/perl/lib/Nix/Store.cc
-
-/misc/systemd/nix-daemon.service
-/misc/systemd/nix-daemon.socket
-/misc/systemd/nix-daemon.conf
-/misc/upstart/nix-daemon.conf
-
-/src/resolve-system-dependencies/resolve-system-dependencies
+# /tests/functional/lang/
+/tests/functional/lang/*.out
+/tests/functional/lang/*.out.xml
+/tests/functional/lang/*.err
+/tests/functional/lang/*.ast
 
 outputs/
 
-*.a
-*.o
-*.so
-*.dylib
-*.dll
-*.exe
-*.dep
 *~
-*.pc
-*.plist
 
 # GNU Global
 GPATH
@@ -121,9 +29,21 @@ GTAGS
 
 # auto-generated compilation database
 compile_commands.json
-
-nix-rust/target
+*.compile_commands.json
 
 result
+result-*
 
+# IDE
 .vscode/
+.idea/
+
+.pre-commit-config.yaml
+
+# clangd and possibly more
+.cache/
+
+# Mac OS
+.DS_Store
+
+flake-regressions
