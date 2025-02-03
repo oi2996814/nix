@@ -1,13 +1,17 @@
 #pragma once
+///@file
 
+#include <cassert>
 #include <future>
 #include <functional>
 
 namespace nix {
 
-/* A callback is a wrapper around a lambda that accepts a valid of
-   type T or an exception. (We abuse std::future<T> to pass the value or
-   exception.) */
+/**
+ * A callback is a wrapper around a lambda that accepts a valid of
+ * type T or an exception. (We abuse std::future<T> to pass the value or
+ * exception.)
+ */
 template<typename T>
 class Callback
 {
@@ -18,7 +22,9 @@ public:
 
     Callback(std::function<void(std::future<T>)> fun) : fun(fun) { }
 
-    Callback(Callback && callback) : fun(std::move(callback.fun))
+    // NOTE: std::function is noexcept move-constructible since C++20.
+    Callback(Callback && callback) noexcept(std::is_nothrow_move_constructible_v<decltype(fun)>)
+        : fun(std::move(callback.fun))
     {
         auto prev = callback.done.test_and_set();
         if (prev) done.test_and_set();

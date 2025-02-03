@@ -1,6 +1,6 @@
 #include "loggers.hh"
+#include "environment-variables.hh"
 #include "progress-bar.hh"
-#include "util.hh"
 
 namespace nix {
 
@@ -30,10 +30,13 @@ Logger * makeDefaultLogger() {
         return makeJSONLogger(*makeSimpleLogger(true));
     case LogFormat::bar:
         return makeProgressBar();
-    case LogFormat::barWithLogs:
-        return makeProgressBar(true);
+    case LogFormat::barWithLogs: {
+        auto logger = makeProgressBar();
+        logger->setPrintBuildLogs(true);
+        return logger;
+    }
     default:
-        abort();
+        unreachable();
     }
 }
 

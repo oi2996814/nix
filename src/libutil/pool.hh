@@ -1,4 +1,5 @@
 #pragma once
+///@file
 
 #include <functional>
 #include <limits>
@@ -11,33 +12,37 @@
 
 namespace nix {
 
-/* This template class implements a simple pool manager of resources
-   of some type R, such as database connections. It is used as
-   follows:
-
-     class Connection { ... };
-
-     Pool<Connection> pool;
-
-     {
-       auto conn(pool.get());
-       conn->exec("select ...");
-     }
-
-   Here, the Connection object referenced by ‘conn’ is automatically
-   returned to the pool when ‘conn’ goes out of scope.
-*/
-
+/**
+ * This template class implements a simple pool manager of resources
+ * of some type R, such as database connections. It is used as
+ * follows:
+ *
+ *   class Connection { ... };
+ *
+ *   Pool<Connection> pool;
+ *
+ *   {
+ *     auto conn(pool.get());
+ *     conn->exec("select ...");
+ *   }
+ *
+ * Here, the Connection object referenced by ‘conn’ is automatically
+ * returned to the pool when ‘conn’ goes out of scope.
+ */
 template <class R>
 class Pool
 {
 public:
 
-    /* A function that produces new instances of R on demand. */
+    /**
+     * A function that produces new instances of R on demand.
+     */
     typedef std::function<ref<R>()> Factory;
 
-    /* A function that checks whether an instance of R is still
-       usable. Unusable instances are removed from the pool. */
+    /**
+     * A function that checks whether an instance of R is still
+     * usable. Unusable instances are removed from the pool.
+     */
     typedef std::function<bool(const ref<R> &)> Validator;
 
 private:
@@ -104,7 +109,15 @@ public:
         Handle(Pool & pool, std::shared_ptr<R> r) : pool(pool), r(r) { }
 
     public:
-        Handle(Handle && h) : pool(h.pool), r(h.r) { h.r.reset(); }
+        // NOTE: Copying std::shared_ptr and calling a .reset() on it is always noexcept.
+        Handle(Handle && h) noexcept
+            : pool(h.pool)
+            , r(h.r)
+        {
+            static_assert(noexcept(h.r.reset()));
+            static_assert(noexcept(std::shared_ptr(h.r)));
+            h.r.reset();
+        }
 
         Handle(const Handle & l) = delete;
 
